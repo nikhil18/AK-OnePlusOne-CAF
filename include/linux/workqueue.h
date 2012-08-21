@@ -143,26 +143,20 @@ struct execute_work {
 	__WORK_INIT_LOCKDEP_MAP(#n, &(n))				\
 	}
 
-#define __DELAYED_WORK_INITIALIZER(n, f) {				\
+#define __DELAYED_WORK_INITIALIZER(n, f, tflags) {			\
 	.work = __WORK_INITIALIZER((n).work, (f)),			\
-	.timer = TIMER_INITIALIZER(delayed_work_timer_fn,		\
-				0, (unsigned long)&(n)),		\
-	}
-
-#define __DEFERRED_WORK_INITIALIZER(n, f) {				\
-	.work = __WORK_INITIALIZER((n).work, (f)),			\
-	.timer = TIMER_DEFERRED_INITIALIZER(delayed_work_timer_fn,	\
-				0, (unsigned long)&(n)),		\
+	.timer = __TIMER_INITIALIZER(delayed_work_timer_fn,		\
+			0, (unsigned long)&(n), (tflags)),		\
 	}
 
 #define DECLARE_WORK(n, f)						\
 	struct work_struct n = __WORK_INITIALIZER(n, f)
 
 #define DECLARE_DELAYED_WORK(n, f)					\
-	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f)
+	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f, 0)
 
 #define DECLARE_DEFERRED_WORK(n, f)					\
-	struct delayed_work n = __DEFERRED_WORK_INITIALIZER(n, f)
+	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f, TIMER_DEFERRABLE)
 
 /*
  * initialize a work item's function pointer
@@ -226,20 +220,20 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 		__INIT_WORK((_work), (_func), 1);			\
 	} while (0)
 
-#define INIT_DELAYED_WORK(_work, _func)					\
+#define __INIT_DELAYED_WORK(_work, _func, _tflags)			\
 	do {								\
 		INIT_WORK(&(_work)->work, (_func));			\
-		init_timer(&(_work)->timer);				\
-		(_work)->timer.function = delayed_work_timer_fn;	\
-		(_work)->timer.data = (unsigned long)(_work);		\
+		__setup_timer(&(_work)->timer, delayed_work_timer_fn,	\
+			      (unsigned long)(_work), (_tflags));	\
 	} while (0)
 
-#define INIT_DELAYED_WORK_ONSTACK(_work, _func)				\
+#define __INIT_DELAYED_WORK_ONSTACK(_work, _func, _tflags)		\
 	do {								\
 		INIT_WORK_ONSTACK(&(_work)->work, (_func));		\
-		init_timer_on_stack(&(_work)->timer);			\
-		(_work)->timer.function = delayed_work_timer_fn;	\
-		(_work)->timer.data = (unsigned long)(_work);		\
+		__setup_timer_on_stack(&(_work)->timer,			\
+				       delayed_work_timer_fn,		\
+				       (unsigned long)(_work),		\
+				       (_tflags));			\
 	} while (0)
 
 #define INIT_DELAYED_WORK_DEFERRABLE(_work, _func)			\
@@ -249,6 +243,12 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 		(_work)->timer.function = delayed_work_timer_fn;	\
 		(_work)->timer.data = (unsigned long)(_work);		\
 	} while (0)
+
+#define INIT_DELAYED_WORK(_work, _func)					\
+	__INIT_DELAYED_WORK(_work, _func, 0)
+
+#define INIT_DELAYED_WORK_ONSTACK(_work, _func)				\
+	__INIT_DELAYED_WORK_ONSTACK(_work, _func, 0)
 
 /**
  * work_pending - Find out whether a work item is currently pending
