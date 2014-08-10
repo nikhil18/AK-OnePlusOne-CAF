@@ -394,22 +394,6 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
 }
 EXPORT_SYMBOL(hci_le_start_enc);
 
-void hci_le_ltk_reply(struct hci_conn *conn, u8 ltk[16])
-{
-	struct hci_dev *hdev = conn->hdev;
-	struct hci_cp_le_ltk_reply cp;
-
-	BT_DBG("%p", conn);
-
-	memset(&cp, 0, sizeof(cp));
-
-	cp.handle = cpu_to_le16(conn->handle);
-	memcpy(cp.ltk, ltk, sizeof(cp.ltk));
-
-	hci_send_cmd(hdev, HCI_OP_LE_LTK_REPLY, sizeof(cp), &cp);
-}
-EXPORT_SYMBOL(hci_le_ltk_reply);
-
 void hci_le_ltk_neg_reply(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
@@ -1089,6 +1073,27 @@ timer:
 	}
 }
 
+void hci_conn_update_sniff_lp(struct hci_conn *conn, bool enable)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_write_link_policy cp;
+
+	BT_DBG("conn %p enable %d", conn, enable);
+
+	if (test_bit(HCI_RAW, &hdev->flags))
+		return;
+
+	if (conn->type == LE_LINK)
+		return;
+
+	cp.handle = cpu_to_le16(conn->handle);
+	if (enable)
+		cp.policy = conn->link_policy | HCI_LP_SNIFF ;
+	else
+		cp.policy = conn->link_policy & ~HCI_LP_SNIFF;
+	hci_send_cmd(hdev, HCI_OP_WRITE_LINK_POLICY, sizeof(cp), &cp);
+}
+
 static inline void hci_conn_stop_rssi_timer(struct hci_conn *conn)
 {
 	BT_DBG("conn %p", conn);
@@ -1437,3 +1442,16 @@ int hci_set_auth_info(struct hci_dev *hdev, void __user *arg)
 
 	return copy_to_user(arg, &req, sizeof(req)) ? -EFAULT : 0;
 }
+
+bool hci_get_sco_status(struct hci_conn *conn)
+{
+	if (!conn)
+		return false;
+
+	if (hci_conn_hash_lookup_state(conn->hdev, SCO_LINK, BT_CONNECTED) ||
+			(hci_conn_hash_lookup_state(conn->hdev, ESCO_LINK,
+						    BT_CONNECTED)))
+		return true;
+	return false;
+}
+
