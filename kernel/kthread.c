@@ -589,6 +589,7 @@ void flush_kthread_work(struct kthread_work *work)
 	};
 	struct kthread_worker *worker;
 	bool noop = false;
+<<<<<<< HEAD
 
 retry:
 	worker = work->worker;
@@ -608,6 +609,27 @@ retry:
 	else
 		noop = true;
 
+=======
+
+retry:
+	worker = work->worker;
+	if (!worker)
+		return;
+
+	spin_lock_irq(&worker->lock);
+	if (work->worker != worker) {
+		spin_unlock_irq(&worker->lock);
+		goto retry;
+	}
+
+	if (!list_empty(&work->node))
+		insert_kthread_work(worker, &fwork.work, work->node.next);
+	else if (worker->current_work == work)
+		insert_kthread_work(worker, &fwork.work, worker->work_list.next);
+	else
+		noop = true;
+
+>>>>>>> 232ac04... Merge tag 'v3.4.12' into cm-11.0-new
 	spin_unlock_irq(&worker->lock);
 
 	if (!noop)

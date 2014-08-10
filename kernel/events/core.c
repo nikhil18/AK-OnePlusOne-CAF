@@ -1194,28 +1194,6 @@ static int __perf_remove_from_context(void *info)
 	return 0;
 }
 
-#ifdef CONFIG_SMP
-static void perf_retry_remove(struct perf_event *event)
-{
-	int up_ret;
-	/*
-	 * CPU was offline. Bring it online so we can
-	 * gracefully exit a perf context.
-	 */
-	up_ret = cpu_up(event->cpu);
-	if (!up_ret)
-		/* Try the remove call once again. */
-		cpu_function_call(event->cpu, __perf_remove_from_context,
-				  event);
-	else
-		pr_err("Failed to bring up CPU: %d, ret: %d\n",
-		       event->cpu, up_ret);
-}
-#else
-static void perf_retry_remove(struct perf_event *event)
-{
-}
-#endif
 
 /*
  * Remove the event from a task's (or a CPU's) list of events.
@@ -1230,22 +1208,19 @@ static void perf_retry_remove(struct perf_event *event)
  * When called from perf_event_exit_task, it's OK because the
  * context has been detached from its task.
  */
-static void __ref perf_remove_from_context(struct perf_event *event)
+static void perf_remove_from_context(struct perf_event *event)
 {
 	struct perf_event_context *ctx = event->ctx;
 	struct task_struct *task = ctx->task;
-	int ret;
 
 	lockdep_assert_held(&ctx->mutex);
 
 	if (!task) {
 		/*
-		 * Per cpu events are removed via an smp call
+		 * Per cpu events are removed via an smp call and
+		 * the removal is always successful.
 		 */
-		ret = cpu_function_call(event->cpu, __perf_remove_from_context,
-					event);
-		if (ret == -ENXIO)
-			perf_retry_remove(event);
+		cpu_function_call(event->cpu, __perf_remove_from_context, event);
 		return;
 	}
 
@@ -2951,20 +2926,12 @@ EXPORT_SYMBOL_GPL(perf_event_release_kernel);
 /*
  * Called when the last reference to the file is gone.
  */
-static int perf_release(struct inode *inode, struct file *file)
+static void put_event(struct perf_event *event)
 {
-	struct perf_event *event = file->private_data;
 	struct task_struct *owner;
 
-	/*
-	 * Event can be in state OFF because of a constraint check.
-	 * Change to ACTIVE so that it gets cleaned up correctly.
-	 */
-	if ((event->state == PERF_EVENT_STATE_OFF) &&
-	    event->attr.constraint_duplicate)
-		event->state = PERF_EVENT_STATE_ACTIVE;
-
-	file->private_data = NULL;
+	if (!atomic_long_dec_and_test(&event->refcount))
+		return;
 
 	rcu_read_lock();
 	owner = ACCESS_ONCE(event->owner);
@@ -2999,7 +2966,13 @@ static int perf_release(struct inode *inode, struct file *file)
 		put_task_struct(owner);
 	}
 
-	return perf_event_release_kernel(event);
+	perf_event_release_kernel(event);
+}
+
+static int perf_release(struct inode *inode, struct file *file)
+{
+	put_event(file->private_data);
+	return 0;
 }
 
 u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)
@@ -3252,7 +3225,7 @@ unlock:
 
 static const struct file_operations perf_fops;
 
-static struct perf_event *perf_fget_light(int fd, int *fput_needed)
+static struct file *perf_fget_light(int fd, int *fput_needed)
 {
 	struct file *file;
 
@@ -3266,7 +3239,7 @@ static struct perf_event *perf_fget_light(int fd, int *fput_needed)
 		return ERR_PTR(-EBADF);
 	}
 
-	return file->private_data;
+	return file;
 }
 
 static int perf_event_set_output(struct perf_event *event,
@@ -3298,19 +3271,21 @@ static long perf_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	case PERF_EVENT_IOC_SET_OUTPUT:
 	{
+		struct file *output_file = NULL;
 		struct perf_event *output_event = NULL;
 		int fput_needed = 0;
 		int ret;
 
 		if (arg != -1) {
-			output_event = perf_fget_light(arg, &fput_needed);
-			if (IS_ERR(output_event))
-				return PTR_ERR(output_event);
+			output_file = perf_fget_light(arg, &fput_needed);
+			if (IS_ERR(output_file))
+				return PTR_ERR(output_file);
+			output_event = output_file->private_data;
 		}
 
 		ret = perf_event_set_output(event, output_event);
 		if (output_event)
-			fput_light(output_event->filp, fput_needed);
+			fput_light(output_file, fput_needed);
 
 		return ret;
 	}
@@ -5148,7 +5123,7 @@ static void sw_perf_event_destroy(struct perf_event *event)
 
 static int perf_swevent_init(struct perf_event *event)
 {
-	u64 event_id = event->attr.config;
+	int event_id = event->attr.config;
 
 	if (event->attr.type != PERF_TYPE_SOFTWARE)
 		return -ENOENT;
@@ -5201,7 +5176,6 @@ static struct pmu perf_swevent = {
 	.read		= perf_swevent_read,
 
 	.event_idx	= perf_swevent_event_idx,
-	.events_across_hotplug = 1,
 };
 
 #ifdef CONFIG_EVENT_TRACING
@@ -5296,7 +5270,6 @@ static struct pmu perf_tracepoint = {
 	.read		= perf_swevent_read,
 
 	.event_idx	= perf_swevent_event_idx,
-	.events_across_hotplug = 1,
 };
 
 static inline void perf_tp_register(void)
@@ -5524,7 +5497,6 @@ static struct pmu perf_cpu_clock = {
 	.read		= cpu_clock_event_read,
 
 	.event_idx	= perf_swevent_event_idx,
-	.events_across_hotplug = 1,
 };
 
 /*
@@ -5605,7 +5577,6 @@ static struct pmu perf_task_clock = {
 	.read		= task_clock_event_read,
 
 	.event_idx	= perf_swevent_event_idx,
-	.events_across_hotplug = 1,
 };
 
 static void perf_pmu_nop_void(struct pmu *pmu)
@@ -5954,6 +5925,7 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 
 	mutex_init(&event->mmap_mutex);
 
+	atomic_long_set(&event->refcount, 1);
 	event->cpu		= cpu;
 	event->attr		= *attr;
 	event->group_leader	= group_leader;
@@ -6264,12 +6236,12 @@ SYSCALL_DEFINE5(perf_event_open,
 		return event_fd;
 
 	if (group_fd != -1) {
-		group_leader = perf_fget_light(group_fd, &fput_needed);
-		if (IS_ERR(group_leader)) {
-			err = PTR_ERR(group_leader);
+		group_file = perf_fget_light(group_fd, &fput_needed);
+		if (IS_ERR(group_file)) {
+			err = PTR_ERR(group_file);
 			goto err_fd;
 		}
-		group_file = group_leader->filp;
+		group_leader = group_file->private_data;
 		if (flags & PERF_FLAG_FD_OUTPUT)
 			output_event = group_leader;
 		if (flags & PERF_FLAG_FD_NO_GROUP)
@@ -6404,7 +6376,6 @@ SYSCALL_DEFINE5(perf_event_open,
 		put_ctx(gctx);
 	}
 
-	event->filp = event_file;
 	WARN_ON_ONCE(ctx->parent_ctx);
 	mutex_lock(&ctx->mutex);
 
@@ -6494,7 +6465,6 @@ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
 		goto err_free;
 	}
 
-	event->filp = NULL;
 	WARN_ON_ONCE(ctx->parent_ctx);
 	mutex_lock(&ctx->mutex);
 	perf_install_in_context(ctx, event, cpu);
@@ -6543,7 +6513,7 @@ static void sync_child_event(struct perf_event *child_event,
 	 * Release the parent event, if this was the last
 	 * reference to it.
 	 */
-	fput(parent_event->filp);
+	put_event(parent_event);
 }
 
 static void
@@ -6619,9 +6589,8 @@ static void perf_event_exit_task_context(struct task_struct *child, int ctxn)
 	 *
 	 *   __perf_event_exit_task()
 	 *     sync_child_event()
-	 *       fput(parent_event->filp)
-	 *         perf_release()
-	 *           mutex_lock(&ctx->mutex)
+	 *       put_event()
+	 *         mutex_lock(&ctx->mutex)
 	 *
 	 * But since its the parent context it won't be the same instance.
 	 */
@@ -6689,7 +6658,7 @@ static void perf_free_event(struct perf_event *event,
 	list_del_init(&event->child_list);
 	mutex_unlock(&parent->child_mutex);
 
-	fput(parent->filp);
+	put_event(parent);
 
 	perf_group_detach(event);
 	list_del_event(event, ctx);
@@ -6769,6 +6738,12 @@ inherit_event(struct perf_event *parent_event,
 				           NULL, NULL);
 	if (IS_ERR(child_event))
 		return child_event;
+
+	if (!atomic_long_inc_not_zero(&parent_event->refcount)) {
+		free_event(child_event);
+		return NULL;
+	}
+
 	get_ctx(child_ctx);
 
 	/*
@@ -6808,14 +6783,6 @@ inherit_event(struct perf_event *parent_event,
 	raw_spin_lock_irqsave(&child_ctx->lock, flags);
 	add_event_to_ctx(child_event, child_ctx);
 	raw_spin_unlock_irqrestore(&child_ctx->lock, flags);
-
-	/*
-	 * Get a reference to the parent filp - we will fput it
-	 * when the child event exits. This is safe to do because
-	 * we are in the parent and we know that the filp still
-	 * exists and has a nonzero count:
-	 */
-	atomic_long_inc(&parent_event->filp->f_count);
 
 	/*
 	 * Link this into the parent event's child list
@@ -7063,20 +7030,11 @@ static void perf_event_exit_cpu_context(int cpu)
 
 	idx = srcu_read_lock(&pmus_srcu);
 	list_for_each_entry_rcu(pmu, &pmus, entry) {
-		/*
-		 * If keeping events across hotplugging is supported, do not
-		 * remove the event list, but keep it alive across CPU hotplug.
-		 * The context is exited via an fd close path when userspace
-		 * is done and the target CPU is online.
-		 */
-		if (!pmu->events_across_hotplug) {
-			ctx = &per_cpu_ptr(pmu->pmu_cpu_context, cpu)->ctx;
+		ctx = &per_cpu_ptr(pmu->pmu_cpu_context, cpu)->ctx;
 
-			mutex_lock(&ctx->mutex);
-			smp_call_function_single(cpu, __perf_event_exit_context,
-						 ctx, 1);
-			mutex_unlock(&ctx->mutex);
-		}
+		mutex_lock(&ctx->mutex);
+		smp_call_function_single(cpu, __perf_event_exit_context, ctx, 1);
+		mutex_unlock(&ctx->mutex);
 	}
 	srcu_read_unlock(&pmus_srcu, idx);
 }

@@ -808,12 +808,15 @@ static inline int l2cap_mode_supported(__u8 mode, __u32 feat_mask)
 void l2cap_send_disconn_req(struct l2cap_conn *conn, struct sock *sk, int err)
 {
 	struct l2cap_disconn_req req;
+	u8 ident;
 
 	if (!conn)
 		return;
 
 	sk->sk_send_head = NULL;
 	skb_queue_purge(TX_QUEUE(sk));
+	ident = l2cap_get_ident(conn);
+	spin_lock_bh(&conn->lock);
 
 	if (l2cap_pi(sk)->mode == L2CAP_MODE_ERTM) {
 		skb_queue_purge(SREJ_QUEUE(sk));
@@ -825,8 +828,17 @@ void l2cap_send_disconn_req(struct l2cap_conn *conn, struct sock *sk, int err)
 
 	req.dcid = cpu_to_le16(l2cap_pi(sk)->dcid);
 	req.scid = cpu_to_le16(l2cap_pi(sk)->scid);
-	l2cap_send_cmd(conn, l2cap_get_ident(conn),
+
+	if (sk->sk_state != BT_CONNECTED && sk->sk_state != BT_CONFIG) {
+		BT_ERR("Avoid to send the disconnect req, As connection is already LOST"
+			"sk = %p sk->sk_state = %d sk->sk_err = %d, err = %d, conn = %p",
+			sk, sk->sk_state, sk->sk_err, err, conn);
+		spin_unlock_bh(&conn->lock);
+		return;
+	}
+	l2cap_send_cmd(conn, ident,
 			L2CAP_DISCONN_REQ, sizeof(req), &req);
+	spin_unlock_bh(&conn->lock);
 
 	sk->sk_state = BT_DISCONN;
 	sk->sk_err = err;
@@ -1198,7 +1210,7 @@ static void l2cap_conn_del(struct hci_conn *hcon, int err, u8 is_process)
 		if ((conn->hcon == hcon) || (l2cap_pi(sk)->ampcon == hcon)) {
 			next = l2cap_pi(sk)->next_c;
 			if (is_process)
-				lock_sock(sk);
+				bh_lock_sock_nested(sk);
 			else
 				bh_lock_sock(sk);
 			l2cap_chan_del(sk, err);
@@ -2830,6 +2842,9 @@ static struct sk_buff *l2cap_build_cmd(struct l2cap_conn *conn,
 
 	BT_DBG("conn %p, code 0x%2.2x, ident 0x%2.2x, len %d",
 			conn, code, ident, dlen);
+
+	if (conn->mtu < L2CAP_HDR_SIZE + L2CAP_CMD_HDR_SIZE)
+		return NULL;
 
 	len = L2CAP_HDR_SIZE + L2CAP_CMD_HDR_SIZE + dlen;
 	count = min_t(unsigned int, mtu, len);
