@@ -86,10 +86,6 @@ static async_cookie_t  __lowest_in_progress(struct async_domain *running)
 {
 	struct async_entry *entry;
 
-<<<<<<< HEAD
-	if (!list_empty(&running->domain)) {
-		entry = list_first_entry(&running->domain, typeof(*entry), list);
-=======
 	if (!running) { /* just check the entry count */
 		if (atomic_read(&entry_count))
 			return 0; /* smaller than any cookie */
@@ -97,10 +93,9 @@ static async_cookie_t  __lowest_in_progress(struct async_domain *running)
 			return next_cookie;
 	}
 
-	if (!list_empty(running)) {
-		entry = list_first_entry(running,
-			struct async_entry, list);
->>>>>>> 232ac04... Merge tag 'v3.4.12' into cm-11.0-new
+	if (!list_empty(&running->domain)) {
+		entry = list_first_entry(&running->domain, typeof(*entry), list);
+
 		return entry->cookie;
 	}
 
@@ -249,13 +244,7 @@ EXPORT_SYMBOL_GPL(async_schedule_domain);
  */
 void async_synchronize_full(void)
 {
-<<<<<<< HEAD
-	do {
-		async_synchronize_cookie(next_cookie);
-	} while (!list_empty(&async_running.domain) || !list_empty(&async_pending));
-=======
 	async_synchronize_cookie_domain(next_cookie, NULL);
->>>>>>> 232ac04... Merge tag 'v3.4.12' into cm-11.0-new
 }
 EXPORT_SYMBOL_GPL(async_synchronize_full);
 
