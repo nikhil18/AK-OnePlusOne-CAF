@@ -131,6 +131,7 @@ struct snd_usb_midi {
 	unsigned char input_running;
 
 	struct snd_kcontrol *roland_load_ctl;
+
 };
 
 struct snd_usb_midi_out_endpoint {
@@ -150,7 +151,6 @@ struct snd_usb_midi_out_endpoint {
 		struct snd_usb_midi_out_endpoint *ep;
 		struct snd_rawmidi_substream *substream;
 		int active;
-		bool autopm_reference;
 		uint8_t cable;		/* cable number << 4 */
 		uint8_t state;
 #define STATE_UNKNOWN	0
