@@ -36,11 +36,8 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 
-<<<<<<< HEAD
 #include <trace/events/exception.h>
-=======
 #include "signal.h"
->>>>>>> 232ac04... Merge tag 'v3.4.12' into cm-11.0-new
 
 static const char *handler[]= { "prefetch abort", "data abort", "address exception", "interrupt" };
 
@@ -62,11 +59,7 @@ static void dump_mem(const char *, const char *, unsigned long, unsigned long);
 void dump_backtrace_entry(unsigned long where, unsigned long from, unsigned long frame)
 {
 #ifdef CONFIG_KALLSYMS
-<<<<<<< HEAD
 	printk("[<%08lx>] (%ps) from [<%08lx>] (%pS)\n", where, (void *)where, from, (void *)from);
-=======
-	printk("[<%08lx>] (%pS) from [<%08lx>] (%pS)\n", where, (void *)where, from, (void *)from);
->>>>>>> 232ac04... Merge tag 'v3.4.12' into cm-11.0-new
 #else
 	printk("Function entered at [<%08lx>] from [<%08lx>]\n", where, from);
 #endif
