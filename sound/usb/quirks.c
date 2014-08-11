@@ -606,9 +606,8 @@ static int snd_usb_fasttrackpro_boot_quirk(struct usb_device *dev)
 		 */
 		err = usb_driver_set_configuration(dev, 2);
 		if (err < 0)
-			dev_dbg(&dev->dev,
-				"error usb_driver_set_configuration: %d\n",
-				err);
+			snd_printdd("error usb_driver_set_configuration: %d\n",
+				    err);
 		/* Always return an error, so that we stop creating a device
 		   that will just be destroyed and recreated with a new
 		   configuration */
