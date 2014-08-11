@@ -1124,7 +1124,6 @@ static void call_console_drivers(int level, const char *text, size_t len)
 	}
 }
 
-
 /*
  * Zap console related locks when oopsing. Only zap at most once
  * every 10 seconds, to leave time for slow consoles to print a
