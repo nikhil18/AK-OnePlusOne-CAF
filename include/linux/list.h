@@ -373,6 +373,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 	(!list_empty(ptr) ? list_first_entry(ptr, type, member) : NULL)
 
 /**
+
  * list_next_entry - get the next element in list
  * @pos:	the type * to cursor
  * @member:	the name of the list_struct within the struct.
