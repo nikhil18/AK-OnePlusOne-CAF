@@ -444,7 +444,6 @@ out:
 	return err;
 }
 
-
 /*
  *	Socket option code for IP. This is the end of the line after any
  *	TCP,UDP etc options on an IP socket.
