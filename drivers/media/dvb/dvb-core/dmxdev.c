@@ -2483,12 +2483,11 @@ static int dvb_dmxdev_section_callback(const u8 *buffer1, size_t buffer1_len,
 	del_timer(&dmxdevfilter->timer);
 	ret = dvb_dmxdev_buffer_write(&dmxdevfilter->buffer, buffer1,
 				      buffer1_len);
-	if (ret == buffer1_len)
+	if (ret == buffer1_len) {
 		ret = dvb_dmxdev_buffer_write(&dmxdevfilter->buffer, buffer2,
 					      buffer2_len);
-
-	if (ret < 0) {
-		dvb_dmxdev_flush_events(&dmxdevfilter->events);
+	}
+	if (ret < 0)
 		dmxdevfilter->buffer.error = ret;
 
 		event.type = DMX_EVENT_BUFFER_OVERFLOW;
