@@ -509,6 +509,8 @@
 			reg-names = "acs", "mdd";
 			regulator-min-microvolt = <400000>;
 			regulator-max-microvolt = <1350000>;
+			regulator-min-microvolt = <500000>;
+			regulator-max-microvolt = <1250000>;
 			qcom,headroom-voltage = <150000>;
 			qcom,retention-voltage = <465000>;
 			qcom,ldo-default-voltage = <600000>;
@@ -525,6 +527,8 @@
 			reg-names = "acs", "mdd";
 			regulator-min-microvolt = <400000>;
 			regulator-max-microvolt = <1350000>;
+			regulator-min-microvolt = <500000>;
+			regulator-max-microvolt = <1250000>;
 			qcom,headroom-voltage = <150000>;
 			qcom,retention-voltage = <465000>;
 			qcom,ldo-default-voltage = <600000>;
@@ -541,6 +545,8 @@
 			reg-names = "acs", "mdd";
 			regulator-min-microvolt = <400000>;
 			regulator-max-microvolt = <1350000>;
+			regulator-min-microvolt = <500000>;
+			regulator-max-microvolt = <1250000>;
 			qcom,headroom-voltage = <150000>;
 			qcom,retention-voltage = <465000>;
 			qcom,ldo-default-voltage = <600000>;
