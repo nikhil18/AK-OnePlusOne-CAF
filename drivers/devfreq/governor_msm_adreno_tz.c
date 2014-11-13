@@ -50,6 +50,14 @@ static DEFINE_SPINLOCK(tz_lock);
 #define LONG_FRAME		25000
 
 /*
+ * Use BUSY_BIN to check for fully busy rendering
+ * intervals that may need early intervention when
+ * seen with LONG_FRAME lengths
+ */
+#define BUSY_BIN		95
+#define LONG_FRAME		25000
+
+/*
  * CEILING is 50msec, larger than any standard
  * frame length, but less than the idle timer.
  */
