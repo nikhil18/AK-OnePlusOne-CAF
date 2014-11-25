@@ -3056,7 +3056,6 @@ static int set_kswapd_cpu_mask(pg_data_t *pgdat)
 		return 0;
 
 	cpus_clear(tmask);
-	ret = cpumask_parse(kswapd_cpu_mask, &tmask);
 	if (ret)
 		return ret;
 
