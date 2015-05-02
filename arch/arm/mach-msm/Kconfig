@@ -251,8 +251,13 @@ config ARCH_APQ8064
 	select MSM_USE_USER_ACCESSIBLE_TIMERS
 	select MSM_CPU_PWRCTL
 
+config MACH_OPPO
+	bool
+	depends on ARCH_MSM
+
 config ARCH_MSM8974
 	bool "MSM8974"
+	select MACH_OPPO
 	select ARCH_MSM_KRAITMP
 	select GPIO_MSM_V3
 	select ARM_GIC
