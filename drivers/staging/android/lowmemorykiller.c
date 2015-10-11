@@ -250,10 +250,8 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	int other_file;
 	unsigned long nr_to_scan = sc->nr_to_scan;
 
-	if (nr_to_scan > 0) {
-		if (mutex_lock_interruptible(&scan_mutex) < 0)
-			return 0;
-	}
+	if (mutex_lock_interruptible(&scan_mutex) < 0)
+		return 0;
 
 	other_free = global_page_state(NR_FREE_PAGES) - totalreserve_pages;
 
@@ -278,7 +276,6 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			break;
 		}
 	}
-	if (nr_to_scan > 0)
 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
 			nr_to_scan, sc->gfp_mask, other_free,
 			other_file, min_score_adj);
@@ -286,9 +283,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
 			     nr_to_scan, sc->gfp_mask);
-		if (nr_to_scan > 0)
-			mutex_unlock(&scan_mutex);
-
+		mutex_unlock(&scan_mutex);
 		return 0;
 	}
 	selected_oom_score_adj = min_score_adj;
