@@ -36,24 +36,24 @@
 
 /* Tuning Interface */
 #ifdef CONFIG_MACH_LGE
-#define FREQ_RESPONSIVENESS		2457600
+#define FREQ_RESPONSIVENESS		2265600
 #else
-#define FREQ_RESPONSIVENESS		1036800
+#define FREQ_RESPONSIVENESS		2265600
 #endif
 
-#define CPUS_DOWN_RATE			2
-#define CPUS_UP_RATE			2
+#define CPUS_DOWN_RATE			1
+#define CPUS_UP_RATE			1
 
-#define DEC_CPU_LOAD			70
-#define DEC_CPU_LOAD_AT_MIN_FREQ	70
+#define DEC_CPU_LOAD			40
+#define DEC_CPU_LOAD_AT_MIN_FREQ	40
 
-#define INC_CPU_LOAD			70
-#define INC_CPU_LOAD_AT_MIN_FREQ	70
+#define INC_CPU_LOAD			50
+#define INC_CPU_LOAD_AT_MIN_FREQ	50
 
 /* Pump Inc/Dec for all cores */
-#define PUMP_INC_STEP_AT_MIN_FREQ	4
-#define PUMP_INC_STEP			1
-#define PUMP_DEC_STEP			2
+#define PUMP_INC_STEP_AT_MIN_FREQ	6
+#define PUMP_INC_STEP			3
+#define PUMP_DEC_STEP			1
 
 /* sample rate */
 #define MIN_SAMPLING_RATE		10000
@@ -488,7 +488,7 @@ static void alucard_check_cpu(struct cpufreq_alucard_cpuinfo *this_alucard_cpuin
 
 	cpu = this_alucard_cpuinfo->cpu;
 	cpu_policy = this_alucard_cpuinfo->cur_policy;
-	if (cpu_policy == NULL)
+	if (!cpu_policy)
 		return;
 
 	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time, io_busy);
@@ -588,24 +588,23 @@ static void do_alucard_timer(struct work_struct *work)
 static int cpufreq_governor_alucard(struct cpufreq_policy *policy,
 				unsigned int event)
 {
-	unsigned int cpu;
+	unsigned int cpu = policy->cpu;
 	struct cpufreq_alucard_cpuinfo *this_alucard_cpuinfo;
 	int rc, delay;
-	int io_busy;
+	int io_busy = alucard_tuners_ins.io_is_busy;
 
-	cpu = policy->cpu;
-	io_busy = alucard_tuners_ins.io_is_busy;
 	this_alucard_cpuinfo = &per_cpu(od_alucard_cpuinfo, cpu);
-	this_alucard_cpuinfo->freq_table = cpufreq_frequency_get_table(cpu);
 
 	switch (event) {
 	case CPUFREQ_GOV_START:
-		if ((!cpu_online(cpu)) ||
-			(!policy->cur) ||
+		if ((!policy->cur) ||
 			(cpu != this_alucard_cpuinfo->cpu))
 			return -EINVAL;
 
 		mutex_lock(&alucard_mutex);
+
+		if (!this_alucard_cpuinfo->freq_table)
+			this_alucard_cpuinfo->freq_table = cpufreq_frequency_get_table(cpu);
 
 		this_alucard_cpuinfo->cur_policy = policy;
 
@@ -683,6 +682,9 @@ static int cpufreq_governor_alucard(struct cpufreq_policy *policy,
 			return -EPERM;
 		}
 		mutex_lock(&this_alucard_cpuinfo->timer_mutex);
+		if (!this_alucard_cpuinfo->freq_table)
+			this_alucard_cpuinfo->freq_table = cpufreq_frequency_get_table(cpu);
+
 		cpufreq_frequency_table_target(policy, this_alucard_cpuinfo->freq_table, policy->min,
 			CPUFREQ_RELATION_L, &this_alucard_cpuinfo->min_index);
 
