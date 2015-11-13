@@ -7439,7 +7439,7 @@ static enum wcd9xxx_cdc_type taiko_get_cdc_type(void)
 	return WCD9XXX_CDC_TYPE_TAIKO;
 }
 
-static void tomtom_codec_hph_auto_pull_down(struct snd_soc_codec *codec,
+static void taiko_codec_hph_auto_pull_down(struct snd_soc_codec *codec,
 					    bool enable)
 {
 	struct wcd9xxx *taiko_core = dev_get_drvdata(codec->dev->parent);
@@ -7464,7 +7464,7 @@ static const struct wcd9xxx_mbhc_cb mbhc_cb = {
 	.compute_impedance = taiko_compute_impedance,
 	.enable_hpmic_switch = taiko_enable_hpmic_switch,
 	.get_hwdep_fw_cal = taiko_get_hwdep_fw_cal,
-	.hph_auto_pulldown_ctrl = tomtom_codec_hph_auto_pull_down,
+	.hph_auto_pulldown_ctrl = taiko_codec_hph_auto_pull_down,
 };
 
 static const struct wcd9xxx_mbhc_intr cdc_intr_ids = {
