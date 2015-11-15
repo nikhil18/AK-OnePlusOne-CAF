@@ -2575,7 +2575,6 @@ static int slim_rx_mux_put(struct snd_kcontrol *kcontrol,
 		goto err;
 	}
 rtn:
-
 	mutex_unlock(&codec->mutex);
 	snd_soc_dapm_mux_update_power(widget, kcontrol, 1, widget->value, e);
 
@@ -7969,6 +7968,10 @@ static int taiko_codec_remove(struct snd_soc_codec *codec)
 
 	/* cleanup MBHC */
 	wcd9xxx_mbhc_deinit(&taiko->mbhc);
+<<<<<<< HEAD
+=======
+#endif /* CONFIG_ENABLE_MBHC */
+>>>>>>> b4c15fa... SOC: fix drivers/mfd/wcd9xxx-core.c and cleanups.
 	/* cleanup resmgr */
 	wcd9xxx_resmgr_deinit(&taiko->resmgr);
 
