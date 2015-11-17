@@ -3722,7 +3722,7 @@ static int move_tasks(struct lb_env *env)
 
 		move_task(p, env);
 		pulled++;
-		env->load_move -= load;
+		env->imbalance -= load;
 		per_cpu(dbs_boost_load_moved, env->dst_cpu) += pct_task_load(p);
 
 #ifdef CONFIG_PREEMPT
