@@ -6357,6 +6357,8 @@ static void update_top_cache_domain(int cpu)
 	int id = cpu;
 
 	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES);
+	if (sd)
+		id = cpumask_first(sched_domain_span(sd));
 	if (sd) {
 		struct sched_domain *tmp = sd;
 		struct sched_group *sg, *prev;
@@ -6389,8 +6391,6 @@ static void update_top_cache_domain(int cpu)
 			tmp->idle_buddy = cpumask_first(sched_group_cpus(sg));
 		} while ((tmp = tmp->child));
 
-		id = cpumask_first(sched_domain_span(sd));
-                size = cpumask_weight(sched_domain_span(sd));
 	}
 
 	rcu_assign_pointer(per_cpu(sd_llc, cpu), sd);
