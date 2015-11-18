@@ -479,6 +479,11 @@ struct input_keymap_entry {
 #define KEY_GESTURE_V		252
 #define KEY_GESTURE_LTR		253
 #define KEY_GESTURE_GTR		254
+<<<<<<< HEAD
+=======
+#define KEY_DOUBLE_TAP		255
+#define KEY_SWEEP_WAKE		255
+>>>>>>> ee5d2b2... synaptics_dsx_i2c: Add sweep2wake gesture
 #endif
 
 /* Code 255 is reserved for special needs of AT keyboard driver */
