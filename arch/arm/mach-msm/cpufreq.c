@@ -266,12 +266,6 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
 	policy->min = CONFIG_MSM_CPU_FREQ_MIN;
 	policy->max = CONFIG_MSM_CPU_FREQ_MAX;
-#else
-#ifdef CONFIG_ARCH_MSM8974
-	/* Predefine max/min frequencies used for device boot */
-	policy->max = 1574400;
-	policy->min = 300000;
-#endif
 #endif
 	cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 
@@ -291,21 +285,18 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	if (ret)
 		return ret;
 	/* Use user max frequency instead of max available frequency */
-	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
+       pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, policy->max);
-	policy->cur = policy->max;
+       policy->cur = policy->max;
 #else
-			policy->cpu, cur_freq, table[index].frequency);
-	policy->cur = table[index].frequency;
+       pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
+		       policy->cpu, cur_freq, table[index].frequency);
+       policy->cur = table[index].frequency;
 #endif
 	cpufreq_frequency_table_get_attr(table, policy->cpu);
-#ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
-	/* set safe default min and max speeds */
-	policy->max = CONFIG_MSM_CPU_FREQ_MAX;
-	policy->min = CONFIG_MSM_CPU_FREQ_MIN;
-#endif
-	return 0;
+	
+        return 0;
 }
 
 static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
