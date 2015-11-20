@@ -229,20 +229,20 @@ static unsigned int msm_cpufreq_get_freq(unsigned int cpu)
 	return clk_get_rate(cpu_clk[cpu]) / 1000;
 }
 
-static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
+static int msm_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int cur_freq;
 	int index;
 	int ret = 0;
 	struct cpufreq_frequency_table *table;
-	struct cpufreq_work_struct *cpu_work = NULL;
+        struct cpufreq_work_struct *cpu_work = NULL;
 	int cpu;
 
 	table = cpufreq_frequency_get_table(policy->cpu);
 	if (table == NULL)
 		return -ENODEV;
 
- 	/*
+	/*
 	 * In some SoC, some cores are clocked by same source, and their
 	 * frequencies can not be changed independently. Find all other
 	 * CPUs that share same clock, and mark them as controlled by
@@ -260,12 +260,13 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
 		policy->cpuinfo.min_freq = CONFIG_MSM_CPU_FREQ_MIN;
 		policy->cpuinfo.max_freq = CONFIG_MSM_CPU_FREQ_MAX;
-#endif
+#else
 		pr_err("cpufreq: failed to get policy min/max\n");
+#endif
 	}
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
-	policy->min = CONFIG_MSM_CPU_FREQ_MIN;
-	policy->max = CONFIG_MSM_CPU_FREQ_MAX;
+        policy->min = CONFIG_MSM_CPU_FREQ_MIN;
+        policy->max = CONFIG_MSM_CPU_FREQ_MAX;
 #endif
 	cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 
@@ -281,22 +282,22 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	 * Call set_cpu_freq unconditionally so that when cpu is set to
 	 * online, frequency limit will always be updated.
 	 */
-	ret = set_cpu_freq(policy, table[index].frequency, table[index].index);
+	ret = set_cpu_freq(policy, table[index].frequency,
+			   table[index].index);
 	if (ret)
 		return ret;
-	/* Use user max frequency instead of max available frequency */
 #ifdef CONFIG_MSM_CPU_FREQ_SET_MIN_MAX
-       pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
+	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, policy->max);
-       policy->cur = policy->max;
+	policy->cur = policy->max;
 #else
-       pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
-		       policy->cpu, cur_freq, table[index].frequency);
-       policy->cur = table[index].frequency;
+	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
+			policy->cpu, cur_freq, table[index].frequency);
+	policy->cur = table[index].frequency;
 #endif
 	cpufreq_frequency_table_get_attr(table, policy->cpu);
-	
-        return 0;
+
+	return 0;
 }
 
 static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
