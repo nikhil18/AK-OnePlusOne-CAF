@@ -7968,10 +7968,6 @@ static int taiko_codec_remove(struct snd_soc_codec *codec)
 
 	/* cleanup MBHC */
 	wcd9xxx_mbhc_deinit(&taiko->mbhc);
-<<<<<<< HEAD
-=======
-#endif /* CONFIG_ENABLE_MBHC */
->>>>>>> b4c15fa... SOC: fix drivers/mfd/wcd9xxx-core.c and cleanups.
 	/* cleanup resmgr */
 	wcd9xxx_resmgr_deinit(&taiko->resmgr);
 
