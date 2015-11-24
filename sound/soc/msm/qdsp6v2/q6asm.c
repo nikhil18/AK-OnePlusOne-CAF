@@ -3107,44 +3107,33 @@ fail_cmd:
 	return -EINVAL;
 }
 
-<<<<<<< HEAD
-=======
-int q6asm_stream_media_format_block_flac(struct audio_client *ac,
-				struct asm_flac_cfg *cfg, int stream_id)
+int q6asm_ds1_set_endp_params(struct audio_client *ac,
+				int param_id, int param_value)
 {
-	struct asm_flac_fmt_blk_v2 fmt;
+	struct asm_dec_ddp_endp_param_v2 ddp_cfg;
 	int rc = 0;
 
-	pr_debug("%s :session[%d] rate[%d] ch[%d] size[%d] stream_id[%d]\n",
-		__func__, ac->session, cfg->sample_rate, cfg->ch_cfg,
-		cfg->sample_size, stream_id);
-
-	q6asm_stream_add_hdr(ac, &fmt.hdr, sizeof(fmt), TRUE, stream_id);
+	pr_debug("%s: session[%d]param_id[%d]param_value[%d]", __func__,
+			ac->session, param_id, param_value);
+	q6asm_add_hdr(ac, &ddp_cfg.hdr, sizeof(ddp_cfg), TRUE);
 	atomic_set(&ac->cmd_state, 1);
-
-	fmt.hdr.opcode = ASM_DATA_CMD_MEDIA_FMT_UPDATE_V2;
-	fmt.fmtblk.fmt_blk_size = sizeof(fmt) - sizeof(fmt.hdr) -
-						sizeof(fmt.fmtblk);
-
-	fmt.is_stream_info_present = cfg->stream_info_present;
-	fmt.num_channels = cfg->ch_cfg;
-	fmt.min_blk_size = cfg->min_blk_size;
-	fmt.max_blk_size = cfg->max_blk_size;
-	fmt.sample_rate = cfg->sample_rate;
-	fmt.min_frame_size = cfg->min_frame_size;
-	fmt.max_frame_size = cfg->max_frame_size;
-	fmt.sample_size = cfg->sample_size;
-
-	rc = apr_send_pkt(ac->apr, (uint32_t *) &fmt);
+	ddp_cfg.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	ddp_cfg.encdec.param_id = param_id;
+	ddp_cfg.encdec.param_size = sizeof(struct asm_dec_ddp_endp_param_v2) -
+				(sizeof(struct apr_hdr) +
+				sizeof(struct asm_stream_cmd_set_encdec_param));
+	ddp_cfg.endp_param_value = param_value;
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &ddp_cfg);
 	if (rc < 0) {
-		pr_err("%s :Comamnd media format update failed %d\n",
-				__func__, rc);
+		pr_err("%s:Command opcode[0x%x] failed\n",
+			__func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM);
 		goto fail_cmd;
 	}
 	rc = wait_event_timeout(ac->cmd_wait,
-				(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+		(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
-		pr_err("%s :timeout. waited for FORMAT_UPDATE\n", __func__);
+		pr_err("%s:timeout opcode[0x%x]\n", __func__,
+			ddp_cfg.hdr.opcode);
 		rc = -ETIMEDOUT;
 		goto fail_cmd;
 	}
