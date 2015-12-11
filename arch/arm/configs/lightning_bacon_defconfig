@@ -1783,16 +1783,6 @@ CONFIG_SERIAL_MSM_HS=y
 # CONFIG_SERIAL_XILINX_PS_UART is not set
 
 #
-# Diag Support
-#
-CONFIG_DIAG_CHAR=y
-
-#
-# DIAG traffic over USB
-#
-CONFIG_DIAG_OVER_USB=y
-
-#
 # SDIO support for DIAG
 #
 
