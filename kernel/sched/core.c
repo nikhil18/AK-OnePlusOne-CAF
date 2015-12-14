@@ -8739,7 +8739,6 @@ struct cgroup_subsys cpu_cgroup_subsys = {
 
 #endif	/* CONFIG_CGROUP_SCHED */
 
-<<<<<<< HEAD
 #ifdef CONFIG_CGROUP_CPUACCT
 
 /*
