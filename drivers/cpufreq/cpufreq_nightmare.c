@@ -89,8 +89,8 @@ static struct nightmare_tuners {
 	.freq_for_responsiveness = 1728000,
 	.freq_for_responsiveness_max = 2265600,
 #else
-	.freq_for_responsiveness = 1566000,
-	.freq_for_responsiveness_max = 1890000,
+	.freq_for_responsiveness = 1728000,
+	.freq_for_responsiveness_max = 2457600,
 #endif
 	.freq_step_at_min_freq = 40,
 	.freq_step = 50,
