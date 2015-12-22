@@ -1638,7 +1638,6 @@ static void worker_leave_idle(struct worker *worker)
 static bool worker_maybe_bind_and_lock(struct worker_pool *pool)
 __acquires(&pool->lock)
 {
-	struct worker_pool *pool = worker->pool;
 	while (true) {
 		/*
 		 * The following call may fail, succeed or succeed
@@ -1647,7 +1646,7 @@ __acquires(&pool->lock)
 		 * against POOL_DISASSOCIATED.
 		 */
 		if (!(pool->flags & POOL_DISASSOCIATED))
-			set_cpus_allowed_ptr(task, pool->attrs->cpumask);
+			set_cpus_allowed_ptr(current, pool->attrs->cpumask);
 
 		spin_lock_irq(&pool->lock);
 		if (pool->flags & POOL_DISASSOCIATED)
@@ -1743,12 +1742,8 @@ static struct worker *create_worker(struct worker_pool *pool)
 	set_user_nice(worker->task, pool->attrs->nice);
 	set_cpus_allowed_ptr(worker->task, pool->attrs->cpumask);
 
-	/*
-	 * %PF_THREAD_BOUND is used to prevent userland from meddling with
-	 * cpumask of workqueue workers.  This is an abuse.  We need
-	 * %PF_NO_SETAFFINITY.
-	 */
-	worker->task->flags |= PF_THREAD_BOUND;
+	/* prevent userland from meddling with cpumask of workqueue workers */
+	worker->task->flags |= PF_NO_SETAFFINITY;
 
 	/*
 	 * The caller is responsible for ensuring %POOL_DISASSOCIATED
@@ -3354,12 +3349,6 @@ static struct bus_type wq_subsys = {
 	.dev_attrs			= wq_sysfs_attrs,
 };
 
-static int __init wq_sysfs_init(void)
-{
-	return subsys_virtual_register(&wq_subsys, NULL);
-}
-core_initcall(wq_sysfs_init);
-
 static void wq_device_release(struct device *dev)
 {
 	struct wq_device *wq_dev = container_of(dev, struct wq_device, dev);
@@ -3971,10 +3960,6 @@ int apply_workqueue_attrs(struct workqueue_struct *wq,
 	copy_workqueue_attrs(new_attrs, attrs);
 	cpumask_and(new_attrs->cpumask, new_attrs->cpumask, cpu_possible_mask);
 
-	pwq = alloc_unbound_pwq(wq, new_attrs);
-	if (!pwq)
-		goto enomem;
-
 	/*
 	 * We may create multiple pwqs with differing cpumasks.  Make a
 	 * copy of @new_attrs which will be modified and used to obtain
@@ -4034,7 +4019,6 @@ enomem_pwq:
 	for_each_node(node)
 		if (pwq_tbl && pwq_tbl[node] != dfl_pwq)
 			free_unbound_pwq(pwq_tbl[node]);
-	mutex_unlock(&wq_pool_mutex);
 	put_online_cpus();
 enomem:
 	ret = -ENOMEM;
