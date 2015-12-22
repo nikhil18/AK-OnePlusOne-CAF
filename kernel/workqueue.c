@@ -816,8 +816,10 @@ void wq_worker_waking_up(struct task_struct *task, int cpu)
 {
 	struct worker *worker = kthread_data(task);
 
-	if (!(worker->flags & WORKER_NOT_RUNNING))
+	if (!(worker->flags & WORKER_NOT_RUNNING)) {
+		WARN_ON_ONCE(worker->pool->cpu != cpu);
 		atomic_inc(&worker->pool->nr_running);
+	}
 }
 
 /**
@@ -1613,7 +1615,7 @@ static void worker_leave_idle(struct worker *worker)
  * flushed from cpu callbacks while cpu is going down, they are
  * guaranteed to execute on the cpu.
  *
- * This function is to be used by rogue workers and rescuers to bind
+ * This function is to be used by unbound workers and rescuers to bind
  * themselves to the target cpu and may race with cpu going down or
  * coming online.  kthread_bind() can't be used because it may put the
  * worker to already dead cpu and set_cpus_allowed_ptr() can't be used
@@ -1749,6 +1751,7 @@ static struct worker *create_worker(struct worker_pool *pool)
 	 * remains stable across this function.  See the comments above the
 	 * flag definition for details.
 	 */
+	if (pool->flags & POOL_DISASSOCIATED)
 		worker->flags |= WORKER_UNBOUND;
 
 	/* successful, commit the pointer to idr */
@@ -3574,30 +3577,27 @@ static void rcu_free_pool(struct rcu_head *rcu)
  * safe manner.  get_unbound_pool() calls this function on its failure path
  * and this function should be able to release pools which went through,
  * successfully or not, init_worker_pool().
+ *
+ * Should be called with wq_pool_mutex held.
  */
 static void put_unbound_pool(struct worker_pool *pool)
 {
 	struct worker *worker;
 
-	mutex_lock(&wq_pool_mutex);
-	if (--pool->refcnt) {
-		mutex_unlock(&wq_pool_mutex);
+	lockdep_assert_held(&wq_pool_mutex);
+
+	if (--pool->refcnt)
 		return;
-	}
 
 	/* sanity checks */
 	if (WARN_ON(!(pool->flags & POOL_DISASSOCIATED)) ||
-	    WARN_ON(!list_empty(&pool->worklist))) {
-		mutex_unlock(&wq_pool_mutex);
+	    WARN_ON(!list_empty(&pool->worklist)))
 		return;
-	}
 
 	/* release id and unhash */
 	if (pool->id >= 0)
 		idr_remove(&worker_pool_idr, pool->id);
 	hash_del(&pool->hash_node);
-
-	mutex_unlock(&wq_pool_mutex);
 
 	/*
 	 * Become the manager and destroy all workers.  Grabbing
@@ -3632,6 +3632,8 @@ static void put_unbound_pool(struct worker_pool *pool)
  * reference count and return it.  If there already is a matching
  * worker_pool, it will be used; otherwise, this function attempts to
  * create a new one.  On failure, returns NULL.
+ *
+ * Should be called with wq_pool_mutex held.
  */
 static struct worker_pool *get_unbound_pool(const struct workqueue_attrs *attrs)
 {
@@ -3640,7 +3642,7 @@ static struct worker_pool *get_unbound_pool(const struct workqueue_attrs *attrs)
 	struct hlist_node *tmp;
 	int node;
 
-	mutex_lock(&wq_pool_mutex);
+	lockdep_assert_held(&wq_pool_mutex);
 
 	/* do we already have a matching pool? */
 	hash_for_each_possible(unbound_pool_hash, pool, tmp, hash_node, hash) {
@@ -3688,10 +3690,8 @@ static struct worker_pool *get_unbound_pool(const struct workqueue_attrs *attrs)
 	/* install */
 	hash_add(unbound_pool_hash, &pool->hash_node, hash);
 out_unlock:
-	mutex_unlock(&wq_pool_mutex);
 	return pool;
 fail:
-	mutex_unlock(&wq_pool_mutex);
 	if (pool)
 		put_unbound_pool(pool);
 	return NULL;
@@ -3728,7 +3728,10 @@ static void pwq_unbound_release_workfn(struct work_struct *work)
 	is_last = list_empty(&wq->pwqs);
 	mutex_unlock(&wq->mutex);
 
+	mutex_lock(&wq_pool_mutex);
 	put_unbound_pool(pool);
+	mutex_unlock(&wq_pool_mutex);
+
 	call_rcu_sched(&pwq->rcu, rcu_free_pwq);
 
 	/*
@@ -3995,9 +3998,22 @@ int apply_workqueue_attrs(struct workqueue_struct *wq,
 		}
 	}
 
+	mutex_unlock(&wq_pool_mutex);
+
+	/* all pwqs have been created successfully, let's install'em */
+	mutex_lock(&wq->mutex);
+
+	copy_workqueue_attrs(wq->unbound_attrs, new_attrs);
+
+	/* save the previous pwq and install the new one */
+	for_each_node(node)
+		pwq_tbl[node] = numa_pwq_tbl_install(wq, node, pwq_tbl[node]);
+
 	/* @dfl_pwq might not have been used, ensure it's linked */
 	link_pwq(dfl_pwq);
 	swap(wq->dfl_pwq, dfl_pwq);
+
+	mutex_unlock(&wq->mutex);
 
 	/* put the old pwqs */
 	for_each_node(node)
@@ -4018,6 +4034,7 @@ enomem_pwq:
 	for_each_node(node)
 		if (pwq_tbl && pwq_tbl[node] != dfl_pwq)
 			free_unbound_pwq(pwq_tbl[node]);
+	mutex_unlock(&wq_pool_mutex);
 	put_online_cpus();
 enomem:
 	ret = -ENOMEM;
@@ -4240,8 +4257,8 @@ struct workqueue_struct *__alloc_workqueue_key(const char *fmt,
 			kfree(rescuer);
 			goto err_destroy;
 		}
- 
-                wq->rescuer = rescuer;
+
+		wq->rescuer = rescuer;
 		rescuer->task->flags |= PF_NO_SETAFFINITY;
 		wake_up_process(rescuer->task);
 	}
