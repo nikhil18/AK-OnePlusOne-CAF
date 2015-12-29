@@ -943,12 +943,6 @@ static int msm_compr_free(struct snd_compr_stream *cstream)
 		pr_err("%s pdata or ac is null\n", __func__);
 		return 0;
 	}
-	if (atomic_read(&prtd-eos)) {
-		ret = wait_event_timeout(prtd->eos_wait,
-					 prtd->cmd_ack, 5 * HZ);
-		if (!ret)
-			pr_err("%s: CMD_EOS failed\n", __func__);
-	}
 	if (atomic_read(&prtd->close)) {
 		prtd->cmd_ack = 0;
 		atomic_set(&prtd->wait_on_close, 1);
