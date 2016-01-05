@@ -1759,6 +1759,9 @@
 	qcom,bus-control;
 	qcom,initial-pwrlevel = <3>;
 
+	qcom,pm-qos-active-latency = <501>;
+	qcom,pm-qos-wakeup-latency = <490>;
+
 	/* Updated bus bandwidth requirements */
 	qcom,msm-bus,vectors-KBps =
 		/* Off */
