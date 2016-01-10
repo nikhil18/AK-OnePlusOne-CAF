@@ -246,8 +246,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = $(CCACHE) gcc
 HOSTCXX      = $(CCACHE) g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -fgcse-las -std=gnu89
-HOSTCXXFLAGS = -O3 -fgcse-las
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -Ofast -fomit-frame-pointer -fgcse-las -std=gnu89
+HOSTCXXFLAGS = -Ofast -fgcse-las
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -351,10 +351,10 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 
 KERNELFLAGS	= -munaligned-access -fforce-addr -fsingle-precision-constant -mcpu=cortex-a15 -mtune=cortex-a15 -marm -mfpu=neon-vfpv4 -fgcse-las
 MODFLAGS	= -DMODULE $(KERNELFLAGS)
-CFLAGS_MODULE   = $(MODFLAGS)
-AFLAGS_MODULE   = $(MODFLAGS)
+CFLAGS_MODULE   =
+AFLAGS_MODULE   =
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL	= $(KERNELFLAGS) -fpredictive-commoning
+CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
@@ -378,7 +378,7 @@ KBUILD_CFLAGS   := -Wall -DNDEBUG -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm \
 		   -ffast-math -fsingle-precision-constant \
 		   -fgcse-lm -fgcse-sm -fsched-spec-load -fforce-addr \
-		   -std=gnu89
+		   -std=gnu89 -fno-pic
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -576,7 +576,10 @@ ifdef CONFIG_CC_OPTIMIZE_DEFAULT
 KBUILD_CFLAGS += -O2
 endif
 ifdef CONFIG_CC_OPTIMIZE_MORE
-KBUILD_CFLAGS += $(call cc-disable-warning,maybe-uninitialized) -O3 -g0 -fmodulo-sched -fmodulo-sched-allow-regmoves -fno-tree-vectorize -Wno-array-bounds -fivopts -fno-inline-functions
+KBUILD_CFLAGS += $(call cc-disable-warning,maybe-uninitialized) -Ofast -g0 -fmodulo-sched -fmodulo-sched-allow-regmoves -fno-tree-vectorize -Wno-array-bounds -fivopts -fno-inline-functions
+endif
+ifdef CONFIG_CC_OPTIMIZE_FAST
+KBUILD_CFLAGS += -Ofast
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
