@@ -169,7 +169,7 @@ struct msm_compr_dec_params {
 	struct snd_dec_ddp ddp_params;
 };
 
-static struct wakeup_source compr_wake_lock;
+static struct wakeup_source msm_compr_ws;
 static struct wakeup_source drain_wake_lock;
 
 static int msm_compr_set_volume(struct snd_compr_stream *cstream,
