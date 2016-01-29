@@ -1101,6 +1101,9 @@ config CC_OPTIMIZE_DEFAULT
 config CC_OPTIMIZE_MORE
 	bool "Use -O3"
 
+config CC_OPTIMIZE_FAST
+        bool "Use -Ofast"
+
 endchoice
 
 config SYSCTL
