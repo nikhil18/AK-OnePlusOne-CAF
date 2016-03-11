@@ -922,6 +922,7 @@ static void mdss_mdp_overlay_cleanup(struct msm_fb_data_type *mfd,
 		else
 			__mdss_mdp_overlay_free_list_add(mfd, &pipe->front_buf);
 		mdss_mdp_data_free(&pipe->back_buf);
+		list_del_init(&pipe->list);
 		mdss_mdp_pipe_destroy(pipe);
 	}
 	mutex_unlock(&mdp5_data->list_lock);
@@ -1194,6 +1195,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 		mdss_mdp_ctl_notify(ctl, MDP_NOTIFY_FRAME_BEGIN);
 		mdss_mdp_ctl_notify(ctl, MDP_NOTIFY_FRAME_READY);
 		mutex_lock(ctl->shared_lock);
+		mutex_lock(ctl->wb_lock);
 	}
 
 	mutex_lock(&mdp5_data->ov_lock);
@@ -1316,11 +1318,12 @@ commit_fail:
 		wake_up_all(&mfd->kickoff_wait_q);
 	}
 	mutex_unlock(&mdp5_data->ov_lock);
-	if (ctl->shared_lock)
+	if (ctl->shared_lock) {
+		mutex_unlock(ctl->wb_lock);
 		mutex_unlock(ctl->shared_lock);
+	}
 	mdss_iommu_ctrl(0);
 	ATRACE_END(__func__);
-
 	return ret;
 }
 
@@ -2752,11 +2755,15 @@ static int mdss_mdp_overlay_ioctl_handler(struct msm_fb_data_type *mfd,
 
 	case MSMFB_VSYNC_CTRL:
 	case MSMFB_OVERLAY_VSYNC_CTRL:
-		if (!copy_from_user(&val, argp, sizeof(val))) {
-			ret = mdss_mdp_overlay_vsync_ctrl(mfd, val);
+		if (mfd->lp_coff) {
+			ret = 0;
 		} else {
-			pr_err("MSMFB_OVERLAY_VSYNC_CTRL failed (%d)\n", ret);
-			ret = -EFAULT;
+			if (!copy_from_user(&val, argp, sizeof(val))) {
+				ret = mdss_mdp_overlay_vsync_ctrl(mfd, val);
+			} else {
+				pr_err("MSMFB_OVERLAY_VSYNC_CTRL failed (%d)\n", ret);
+				ret = -EFAULT;
+			}
 		}
 		break;
 	case MSMFB_OVERLAY_COMMIT:

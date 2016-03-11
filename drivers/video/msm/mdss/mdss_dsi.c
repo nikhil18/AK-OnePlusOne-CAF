@@ -21,7 +21,6 @@
 #include <linux/gpio.h>
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
-#include <linux/lcd_notify.h>
 
 #include "mdss.h"
 #include "mdss_panel.h"
@@ -156,16 +155,10 @@ error:
 	return ret;
 }
 
-static int mdss_dsi_panel_power_doze(struct mdss_panel_data *pdata, int enable)
-{
-	/* Panel power control when entering/exiting doze mode */
-	return 0;
-}
-
 static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 	int power_state)
 {
-	int ret;
+	int ret = 0;
 	struct mdss_panel_info *pinfo;
 
 	if (pdata == NULL) {
@@ -194,13 +187,8 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 		ret = mdss_dsi_panel_power_off(pdata);
 		break;
 	case MDSS_PANEL_POWER_ON:
-		if (mdss_dsi_is_panel_on_lp(pdata))
-			ret = mdss_dsi_panel_power_doze(pdata, false);
-		else
+		if (!mdss_dsi_is_panel_on_lp(pdata))
 			ret = mdss_dsi_panel_power_on(pdata);
-		break;
-	case MDSS_PANEL_POWER_DOZE:
-		ret = mdss_dsi_panel_power_doze(pdata, true);
 		break;
 	default:
 		pr_err("%s: unknown panel power state requested (%d)\n",
@@ -652,13 +640,6 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata, int power_state)
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_ALL_CLKS, 1);
 
-	if (power_state == MDSS_PANEL_POWER_DOZE) {
-		pr_debug("%s: low power state requested\n", __func__);
-		if (ctrl_pdata->low_power_config)
-			ret = ctrl_pdata->low_power_config(pdata, true);
-		goto error;
-	}
-
 	if (pdata->panel_info.type == MIPI_VIDEO_PANEL &&
 			ctrl_pdata->off_cmds.link_state == DSI_LP_MODE) {
 		mdss_dsi_sw_reset(ctrl_pdata, false);
@@ -881,7 +862,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 
 	switch (event) {
 	case MDSS_EVENT_UNBLANK:
-		lcd_notifier_call_chain(LCD_EVENT_ON_START, NULL);
 		rc = mdss_dsi_on(pdata);
 		mdss_dsi_op_mode_config(pdata->panel_info.mipi.mode,
 							pdata);
@@ -892,11 +872,9 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		ctrl_pdata->ctrl_state |= CTRL_STATE_MDP_ACTIVE;
 		if (ctrl_pdata->on_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_unblank(pdata);
-		lcd_notifier_call_chain(LCD_EVENT_ON_END, NULL);
 		break;
 	case MDSS_EVENT_BLANK:
 		power_state = (int) (unsigned long) arg;
-		lcd_notifier_call_chain(LCD_EVENT_OFF_START, NULL);
 		if (ctrl_pdata->off_cmds.link_state == DSI_HS_MODE)
 			rc = mdss_dsi_blank(pdata, power_state);
 		break;
@@ -906,7 +884,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->off_cmds.link_state == DSI_LP_MODE)
 			rc = mdss_dsi_blank(pdata, power_state);
 		rc = mdss_dsi_off(pdata, power_state);
-		lcd_notifier_call_chain(LCD_EVENT_OFF_END, NULL);
 		break;
 	case MDSS_EVENT_CONT_SPLASH_FINISH:
 		if (ctrl_pdata->off_cmds.link_state == DSI_LP_MODE)

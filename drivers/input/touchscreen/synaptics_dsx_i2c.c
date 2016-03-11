@@ -451,10 +451,6 @@ exit:
 #define Mgestrue            12  // M
 #define Wgestrue            13  // W
 
-#define BLANK	1
-#define UNBLANK	0
-#define DOZE	2
-
 #define SYNA_ADDR_REPORT_FLAG        0x1b  //report mode register
 #define SYNA_ADDR_GESTURE_FLAG       0x20  //gesture enable register
 #define SYNA_ADDR_GESTURE_OFFSET     0x08  //gesture register addr=0x08
@@ -462,6 +458,8 @@ exit:
 #define SYNA_ADDR_TOUCH_FEATURE      0x1E  //ThreeD Touch Features
 #define SYNA_ADDR_F12_2D_CTRL23      0x1D
 #define SYNA_ADDR_F12_2D_CTRL10      0x16
+
+#define SYNA_GESTURE_DELAY_MS 1500 // time to wait in between gestures
 
 extern int rmi4_fw_module_init(bool insert);
 
@@ -535,7 +533,7 @@ static ssize_t vk_syna_show(struct kobject *kobj,
 
 static struct kobj_attribute vk_syna_attr = {
 	.attr = {
-		.name = "virtualkeys.""synaptics-rmi-ts",
+		.name = "virtualkeys.synaptics-rmi-ts",
 		.mode = S_IRUGO,
 	},
 	.show = &vk_syna_show,
@@ -593,6 +591,15 @@ static int get_virtual_key_button(int x, int y)
 	return i;
 }
 /***** For virtual key definition end *********************/
+
+static void synaptics_update_gesture_status(struct synaptics_rmi4_data *ts)
+{
+	atomic_set(&ts->syna_use_gesture,
+			atomic_read(&ts->double_tap_enable) ||
+			atomic_read(&ts->camera_enable) ||
+			atomic_read(&ts->music_enable) ||
+			atomic_read(&ts->flashlight_enable) ? 1 : 0);
+}
 
 static int synaptics_enable_gesture(struct synaptics_rmi4_data *rmi4_data, bool enable)
 {
@@ -685,6 +692,7 @@ static int synaptics_rmi4_proc_double_tap_write(struct file *filp, const char __
 	enable = (buf[0] == '0') ? 0 : 1;
 
 	atomic_set(&syna_rmi4_data->double_tap_enable, enable);
+	synaptics_update_gesture_status(syna_rmi4_data);
 
 	return len;
 }
@@ -712,6 +720,7 @@ static int synaptics_rmi4_proc_camera_write(struct file *filp, const char __user
 	enable = (buf[0] == '0') ? 0 : 1;
 
 	atomic_set(&syna_rmi4_data->camera_enable, enable);
+	synaptics_update_gesture_status(syna_rmi4_data);
 
 	return len;
 }
@@ -739,6 +748,7 @@ static int synaptics_rmi4_proc_music_write(struct file *filp, const char __user 
 	enable = (buf[0] == '0') ? 0 : 1;
 
 	atomic_set(&syna_rmi4_data->music_enable, enable);
+	synaptics_update_gesture_status(syna_rmi4_data);
 
 	return len;
 }
@@ -766,6 +776,7 @@ static int synaptics_rmi4_proc_flashlight_write(struct file *filp, const char __
 	enable = (buf[0] == '0') ? 0 : 1;
 
 	atomic_set(&syna_rmi4_data->flashlight_enable, enable);
+	synaptics_update_gesture_status(syna_rmi4_data);
 
 	return len;
 }
@@ -987,7 +998,7 @@ static unsigned char synaptics_rmi4_update_gesture2(unsigned char *gesture,
 		case SYNA_ONE_FINGER_DOUBLE_TAP:
 			gesturemode = DouTap;
 			if (atomic_read(&syna_rmi4_data->double_tap_enable))
-				keyvalue = KEY_DOUBLE_TAP;
+				keyvalue = KEY_POWER;
 			break;
 
 		case SYNA_ONE_FINGER_DIRECTION:
@@ -1060,13 +1071,18 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	unsigned char gestureext[25];
 	unsigned char keyvalue;
 	unsigned int  finger_info = 0;
+	u64 now = ktime_to_ms(ktime_get());
 
 	fingers_to_process = fhandler->num_of_data_points;
 	data_addr = fhandler->full_addr.data_base;
 	extra_data = (struct synaptics_rmi4_f12_extra_data *)fhandler->extra;
 	size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
 
-	if (atomic_read(&rmi4_data->syna_use_gesture)) {
+	if (atomic_read(&rmi4_data->syna_use_gesture) &&
+		(now - rmi4_data->last_gesture_time > SYNA_GESTURE_DELAY_MS) &&
+		!atomic_read(&rmi4_data->resume_suspend)) {
+		rmi4_data->last_gesture_time = now;
+
 		synaptics_rmi4_i2c_read(rmi4_data,
 				SYNA_ADDR_GESTURE_OFFSET,
 				gesture,
@@ -1281,9 +1297,28 @@ static void synaptics_rmi4_sensor_report(struct synaptics_rmi4_data *rmi4_data, 
 static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
 {
 	struct synaptics_rmi4_data *rmi4_data = data;
-	ktime_t timestamp = ktime_get();
+	unsigned long flags;
+	bool i2c_active;
 
-	synaptics_rmi4_sensor_report(rmi4_data, timestamp);
+	if (!atomic_read(&rmi4_data->ts_awake)) {
+		spin_lock_irqsave(&rmi4_data->isr_lock, flags);
+		i2c_active = rmi4_data->i2c_awake;
+		spin_unlock_irqrestore(&rmi4_data->isr_lock, flags);
+
+		/* I2C bus must be active */
+		if (!i2c_active) {
+			__pm_stay_awake(&rmi4_data->syna_isr_ws);
+			/* Wait for I2C to resume before proceeding */
+			INIT_COMPLETION(rmi4_data->i2c_resume);
+			wait_for_completion_timeout(&rmi4_data->i2c_resume,
+							msecs_to_jiffies(30));
+		}
+	}
+
+	synaptics_rmi4_sensor_report(rmi4_data, ktime_get());
+
+	if (rmi4_data->syna_isr_ws.active)
+		__pm_relax(&rmi4_data->syna_isr_ws);
 
 	return IRQ_HANDLED;
 }
@@ -1296,43 +1331,35 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
  * such as rmi_dev.
  *
  * This function handles the enabling and disabling of the attention
- * irq including the setting up of the ISR thread.
+ * irq.
  */
 static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 		bool enable)
 {
 	int ret = 0;
 	unsigned char intr_status[MAX_INTR_REGISTERS];
-	const struct synaptics_dsx_platform_data *platform_data =
-		rmi4_data->i2c_client->dev.platform_data;
+
+	if ((enable && atomic_read(&rmi4_data->irq_enabled)) ||
+		(!enable && !atomic_read(&rmi4_data->irq_enabled)))
+		return ret;
 
 	if (enable) {
-		if (atomic_read(&rmi4_data->irq_enabled))
-			return ret;
-
 		/* Clear interrupts first */
 		ret = synaptics_rmi4_i2c_read(rmi4_data,
 				rmi4_data->f01_data_base_addr + 1,
 				intr_status,
 				rmi4_data->num_of_intr_regs);
-		if (ret)
-			return ret;
-		ret = request_threaded_irq(rmi4_data->irq, NULL,
-				synaptics_rmi4_irq, platform_data->irq_flags,
-				"synaptics-rmi-ts", rmi4_data);
 		if (ret) {
 			dev_err(&rmi4_data->i2c_client->dev,
-					"%s: Failed to create irq thread\n",
-					__func__);
+				"%s: Failed to read interrupt status %d\n",
+				__func__, __LINE__);
 			return ret;
 		}
+
+		enable_irq(rmi4_data->irq);
 		atomic_set(&rmi4_data->irq_enabled, 1);
 	} else {
-		if (!atomic_read(&rmi4_data->irq_enabled))
-			return ret;
-
 		disable_irq(rmi4_data->irq);
-		free_irq(rmi4_data->irq, rmi4_data);
 		atomic_set(&rmi4_data->irq_enabled, 0);
 	}
 
@@ -1879,7 +1906,7 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 	set_bit(KEY_MENU, rmi4_data->input_dev->keybit);
 	set_bit(KEY_HOMEPAGE, rmi4_data->input_dev->keybit);
 	set_bit(KEY_F3, rmi4_data->input_dev->keybit);
-	set_bit(KEY_DOUBLE_TAP, rmi4_data->input_dev->keybit);
+	set_bit(KEY_POWER, rmi4_data->input_dev->keybit);
 	set_bit(KEY_GESTURE_CIRCLE, rmi4_data->input_dev->keybit);
 	set_bit(KEY_GESTURE_SWIPE_DOWN, rmi4_data->input_dev->keybit);
 	set_bit(KEY_GESTURE_V, rmi4_data->input_dev->keybit);
@@ -2017,7 +2044,10 @@ static void synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data,
 	regulator_disable(rmi4_data->regulator);
 	msleep(30);
 	rmi4_data->current_page = MASK_8BIT;
-	synaptics_rmi4_irq_enable(rmi4_data, false);
+	if (atomic_read(&rmi4_data->irq_enabled)) {
+		disable_irq(rmi4_data->irq);
+		atomic_set(&rmi4_data->irq_enabled, 0);
+	}
 
 	synaptics_rmi4_free_fingers(rmi4_data);
 
@@ -2048,9 +2078,12 @@ static void synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data,
 
 	//reinit device
 	msleep(10);
-	synaptics_rmi4_irq_enable(rmi4_data, true);
 	synaptics_rmi4_i2c_read(rmi4_data,rmi4_data->f01_data_base_addr + 1,
 			(unsigned char *)&temp, 1);
+	if (!atomic_read(&rmi4_data->irq_enabled)) {
+		enable_irq(rmi4_data->irq);
+		atomic_set(&rmi4_data->irq_enabled, 1);
+	}
 }
 
 /**
@@ -2210,7 +2243,7 @@ static void synaptics_rmi4_get_vendorid(struct synaptics_rmi4_data *rmi4_data)
 
 	rmi4_data->vendor_id = vendor_id;
 	synaptics_rmi4_get_vendorstring(rmi4_data->vendor_id, lcd_type_id);
-	pr_err("[syna] vendor id: %x\n", vendor_id);
+	pr_err("vendor id: %x\n", vendor_id);
 }
 
 /**
@@ -2313,23 +2346,19 @@ static void synaptics_rmi4_sensor_wake(struct synaptics_rmi4_data *rmi4_data)
 static void synaptics_rmi4_suspend(struct synaptics_rmi4_data *rmi4_data)
 {
 	synaptics_rmi4_irq_enable(rmi4_data, false);
-
-	atomic_set(&rmi4_data->syna_use_gesture,
-			atomic_read(&rmi4_data->double_tap_enable) ||
-			atomic_read(&rmi4_data->camera_enable) ||
-			atomic_read(&rmi4_data->music_enable) ||
-			atomic_read(&rmi4_data->flashlight_enable) ? 1 : 0);
+	synaptics_rmi4_free_fingers(rmi4_data);
 
 	if (atomic_read(&rmi4_data->syna_use_gesture)) {
 		synaptics_enable_gesture(rmi4_data, true);
-		synaptics_rmi4_irq_enable(rmi4_data, true);
 		synaptics_enable_irqwake(rmi4_data, true);
+		synaptics_rmi4_irq_enable(rmi4_data, true);
 	} else {
 		synaptics_rmi4_sensor_sleep(rmi4_data);
-		synaptics_rmi4_free_fingers(rmi4_data);
 	}
 
 	atomic_set(&rmi4_data->ts_awake, 0);
+
+	pm_relax(&rmi4_data->i2c_client->dev);
 }
 
 /**
@@ -2344,21 +2373,15 @@ static void synaptics_rmi4_suspend(struct synaptics_rmi4_data *rmi4_data)
  */
 static void synaptics_rmi4_resume(struct synaptics_rmi4_data *rmi4_data)
 {
-	synaptics_rmi4_irq_enable(rmi4_data, false);
-
-	if (atomic_read(&rmi4_data->syna_use_gesture)) {
-		synaptics_enable_gesture(rmi4_data, false);
+	if (atomic_read(&rmi4_data->irq_enabled)) {
+		synaptics_rmi4_irq_enable(rmi4_data, false);
 		synaptics_enable_irqwake(rmi4_data, false);
+		synaptics_enable_gesture(rmi4_data, false);
+		synaptics_rmi4_free_fingers(rmi4_data);
+	} else {
+		synaptics_rmi4_sensor_wake(rmi4_data);
+		synaptics_rmi4_reinit_device(rmi4_data);
 	}
-
-	synaptics_rmi4_sensor_wake(rmi4_data);
-	synaptics_rmi4_reinit_device(rmi4_data);
-
-	atomic_set(&rmi4_data->syna_use_gesture,
-			atomic_read(&rmi4_data->double_tap_enable) ||
-			atomic_read(&rmi4_data->camera_enable) ||
-			atomic_read(&rmi4_data->music_enable) ||
-			atomic_read(&rmi4_data->flashlight_enable) ? 1 : 0);
 
 	synaptics_rmi4_irq_enable(rmi4_data, true);
 	atomic_set(&rmi4_data->ts_awake, 1);
@@ -2400,6 +2423,8 @@ static int fb_notifier_callback(struct notifier_block *nb,
 		break;
 	default:
 		if (atomic_read(&rmi4_data->ts_awake)) {
+			/* Don't allow device to sleep while suspend worker is running */
+			pm_stay_awake(&rmi4_data->i2c_client->dev);
 			cancel_work_sync(&rmi4_data->syna_pm_work);
 			atomic_set(&rmi4_data->resume_suspend, 0);
 			queue_work(rmi4_data->syna_pm_wq, &rmi4_data->syna_pm_work);
@@ -2410,6 +2435,35 @@ static int fb_notifier_callback(struct notifier_block *nb,
 
 	return NOTIFY_OK;
 }
+
+static int synaptics_i2c_resume(struct device *dev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&syna_rmi4_data->isr_lock, flags);
+	syna_rmi4_data->i2c_awake = true;
+	spin_unlock_irqrestore(&syna_rmi4_data->isr_lock, flags);
+
+	complete(&syna_rmi4_data->i2c_resume);
+
+	return 0;
+}
+
+static int synaptics_i2c_suspend(struct device *dev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&syna_rmi4_data->isr_lock, flags);
+	syna_rmi4_data->i2c_awake = false;
+	spin_unlock_irqrestore(&syna_rmi4_data->isr_lock, flags);
+
+	return 0;
+}
+
+static const struct dev_pm_ops synaptics_i2c_pm_ops = {
+	.resume  = synaptics_i2c_resume,
+	.suspend = synaptics_i2c_suspend,
+};
 
 /**
  * synaptics_rmi4_probe()
@@ -2536,11 +2590,20 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	synaptics_rmi4_init_touchpanel_proc();
 	atomic_set(&rmi4_data->sensor_awake, 1);
 
-	ret = synaptics_rmi4_irq_enable(rmi4_data, true);
+	init_completion(&rmi4_data->i2c_resume);
+	spin_lock_init(&rmi4_data->isr_lock);
+	wakeup_source_init(&rmi4_data->syna_isr_ws, "synaptics-isr");
+	rmi4_data->i2c_awake = true;
+
+	ret = request_threaded_irq(rmi4_data->irq, NULL,
+			synaptics_rmi4_irq, platform_data->irq_flags,
+			"synaptics-rmi-ts", rmi4_data);
 	if (ret)
 		dev_err(&client->dev,
-				"%s: Failed to enable attention interrupt\n",
+				"%s: Failed to register irq\n",
 				__func__);
+
+	atomic_set(&rmi4_data->irq_enabled, 1);
 
 	if (!exp_data.initialized) {
 		mutex_init(&exp_data.mutex);
@@ -2556,7 +2619,8 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 			&exp_data.work,
 			msecs_to_jiffies(200));
 
-	rmi4_data->syna_pm_wq = alloc_workqueue("synaptics_pm_wq", WQ_HIGHPRI, 0);
+	rmi4_data->syna_pm_wq = alloc_workqueue("synaptics_pm_wq",
+					WQ_HIGHPRI | WQ_NON_REENTRANT, 0);
 	INIT_WORK(&rmi4_data->syna_pm_work, synaptics_rmi4_pm_main);
 
 	rmi4_fw_module_init(true);
@@ -2653,6 +2717,7 @@ static struct i2c_driver synaptics_rmi4_driver = {
 		.name = "synaptics-rmi-ts",
 		.owner = THIS_MODULE,
 		.of_match_table = synaptics_of_match_table,
+		.pm = &synaptics_i2c_pm_ops,
 	},
 	.probe = synaptics_rmi4_probe,
 	.remove = __devexit_p(synaptics_rmi4_remove),
