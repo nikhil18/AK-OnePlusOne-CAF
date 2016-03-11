@@ -70,12 +70,7 @@ obj-$(CONFIG_QSEECOM) += qseecom.o
 obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
 obj-$(CONFIG_TI_DRV2667) += ti_drv2667.o
 obj-$(CONFIG_QPNP_MISC) += qpnp-misc.o
-<<<<<<< HEAD
 obj-$(CONFIG_UID_CPUTIME) 	+= uid_cputime.o
 
-=======
 obj-y				+= sound_control.o
-#OPPO 2013-02-21 yuyi add begin for breath led
-#ifdef CONFIG_MACH_MSM8974_14001
->>>>>>> 3a01e4f... sound: add sound control to increase headphones, speaker and mic gain.
 obj-$(CONFIG_SN3193_SLED)  += shineled/
