@@ -222,7 +222,7 @@ static void __ref asmp_resume(void)
 static int state_notifier_callback(struct notifier_block *this,
 				unsigned long event, void *data)
 {
-	if (!autosmp_enabled)
+	if (enabled)
                 return NOTIFY_OK;
 
 	switch (event) {
