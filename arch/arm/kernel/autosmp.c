@@ -68,7 +68,7 @@ static struct asmp_param_struct {
 };
 
 static unsigned int cycle = 0;
-static int enabled __read_mostly = 1;
+static int enabled __read_mostly = 0;
 static int enable_switch = 0;
 /*
  * suspend mode, if set = 1 hotplug will sleep,
